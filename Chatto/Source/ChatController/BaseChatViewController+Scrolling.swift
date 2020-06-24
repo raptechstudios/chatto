@@ -63,6 +63,18 @@ extension BaseChatViewController {
         return (self.visibleRect().minY / collectionView.contentSize.height) < self.constants.autoloadingFractionalThreshold
     }
 
+    public func isCloseToBottomForPagination() -> Bool {
+        guard let collectionView = self.collectionView else { return true }
+        guard collectionView.contentSize.height > 0 else { return true }
+        return (collectionView.contentSize.height - visibleRect().maxY) < self.constants.autoloadingAbsoluteThreshold
+    }
+
+    public func isCloseToTopForPagination() -> Bool {
+        guard let collectionView = self.collectionView else { return true }
+        guard collectionView.contentSize.height > 0 else { return true }
+        return self.visibleRect().minY < self.constants.autoloadingAbsoluteThreshold
+    }
+
     public func isIndexPathVisible(_ indexPath: IndexPath, atEdge edge: CellVerticalEdge) -> Bool {
         guard let collectionView = self.collectionView else { return true }
         guard let attributes = collectionView.collectionViewLayout.layoutAttributesForItem(at: indexPath) else { return false }
@@ -165,9 +177,9 @@ extension BaseChatViewController {
     public func autoLoadMoreContentIfNeeded() {
         guard self.autoLoadingEnabled, let dataSource = self.chatDataSource else { return }
 
-        if self.isCloseToTop() && dataSource.hasMorePrevious {
+        if self.isCloseToTopForPagination() && dataSource.hasMorePrevious {
             dataSource.loadPrevious()
-        } else if self.isCloseToBottom() && dataSource.hasMoreNext {
+        } else if self.isCloseToBottomForPagination() && dataSource.hasMoreNext {
             dataSource.loadNext()
         }
     }

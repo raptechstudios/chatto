@@ -49,6 +49,7 @@ open class BaseChatViewController: UIViewController, UICollectionViewDataSource,
         public var preferredMaxMessageCount: Int? = 500 // If not nil, will ask data source to reduce number of messages when limit is reached. @see ChatDataSourceDelegateProtocol
         public var preferredMaxMessageCountAdjustment: Int = 400 // When the above happens, will ask to adjust with this value. It may be wise for this to be smaller to reduce number of adjustments
         public var autoloadingFractionalThreshold: CGFloat = 0.05 // in [0, 1]
+        public var autoloadingAbsoluteThreshold: CGFloat = 300 // in points
     }
 
     public var constants = Constants()
