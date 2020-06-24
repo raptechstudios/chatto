@@ -47,7 +47,7 @@ public extension CGSize {
         // Horizontal alignment
         switch xAlignament {
         case .left:
-            originX = 0
+            originX = containerRect.minX
         case .center:
             originX = containerRect.midX - self.width / 2.0
         case .right:
@@ -57,7 +57,7 @@ public extension CGSize {
         // Vertical alignment
         switch yAlignment {
         case .top:
-            originY = 0
+            originY = containerRect.minY
         case .center:
             originY = containerRect.midY - self.height / 2.0
         case .bottom:
