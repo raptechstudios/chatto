@@ -35,6 +35,7 @@ open class ExpandableTextView: UITextView {
     public weak var placeholderDelegate: ExpandableTextViewPlaceholderDelegate?
 
     public var pasteActionInterceptor: PasteActionInterceptor?
+    public var canPerformPaste: Bool = true
 
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
@@ -163,15 +164,20 @@ open class ExpandableTextView: UITextView {
     // MARK: - UIResponder
 
     open override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        guard action == #selector(paste(_:)),
-              let interceptor = self.pasteActionInterceptor,
-              interceptor.canPerformPaste(withSender: sender) else {
+        if action == #selector(paste(_:)) {
+            guard canPerformPaste else { return false }
+            guard let interceptor = self.pasteActionInterceptor,
+                  interceptor.canPerformPaste(withSender: sender) else {
+                return super.canPerformAction(action, withSender: sender)
+            }
+            return true
+        } else {
             return super.canPerformAction(action, withSender: sender)
         }
-        return true
     }
 
     open override func paste(_ sender: Any?) {
+        guard canPerformPaste else { return }
         let handeledByInterceptor = self.pasteActionInterceptor?.performPaste() == true
         if !handeledByInterceptor && super.canPerformAction(#selector(paste(_:)), withSender: sender) {
             super.paste(sender)
