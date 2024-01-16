@@ -109,24 +109,6 @@ open class BaseMessageCollectionViewCellDefaultStyle: BaseMessageCollectionViewC
     let outgoingAvatarStyle: AvatarStyle
     let selectionIndicatorStyle: SelectionIndicatorStyle
 
-    public convenience init(
-        colors: Colors = BaseMessageCollectionViewCellDefaultStyle.createDefaultColors(),
-        bubbleBorderImages: BubbleBorderImages? = BaseMessageCollectionViewCellDefaultStyle.createDefaultBubbleBorderImages(),
-        failedIconImages: FailedIconImages = BaseMessageCollectionViewCellDefaultStyle.createDefaultFailedIconImages(),
-        layoutConstants: BaseMessageCollectionViewCellLayoutConstants = BaseMessageCollectionViewCellDefaultStyle.createDefaultLayoutConstants(),
-        dateTextStyle: DateTextStyle = BaseMessageCollectionViewCellDefaultStyle.createDefaultDateTextStyle(),
-        avatarStyle: AvatarStyle = AvatarStyle(),
-        selectionIndicatorStyle: SelectionIndicatorStyle = BaseMessageCollectionViewCellDefaultStyle.createDefaultSelectionIndicatorStyle()) {
-        self.init(colors: colors,
-                  bubbleBorderImages: bubbleBorderImages,
-                  failedIconImages: failedIconImages,
-                  layoutConstants: layoutConstants,
-                  dateTextStyle: dateTextStyle,
-                  incomingAvatarStyle: avatarStyle,
-                  outgoingAvatarStyle: avatarStyle,
-                  selectionIndicatorStyle: selectionIndicatorStyle)
-    }
-
     public init(
         colors: Colors = BaseMessageCollectionViewCellDefaultStyle.createDefaultColors(),
         bubbleBorderImages: BubbleBorderImages? = BaseMessageCollectionViewCellDefaultStyle.createDefaultBubbleBorderImages(),
@@ -135,7 +117,8 @@ open class BaseMessageCollectionViewCellDefaultStyle: BaseMessageCollectionViewC
         dateTextStyle: DateTextStyle = BaseMessageCollectionViewCellDefaultStyle.createDefaultDateTextStyle(),
         incomingAvatarStyle: AvatarStyle = AvatarStyle(),
         outgoingAvatarStyle: AvatarStyle = AvatarStyle(),
-        selectionIndicatorStyle: SelectionIndicatorStyle = BaseMessageCollectionViewCellDefaultStyle.createDefaultSelectionIndicatorStyle()
+        selectionIndicatorStyle: SelectionIndicatorStyle = BaseMessageCollectionViewCellDefaultStyle.createDefaultSelectionIndicatorStyle(),
+        replyIndicatorStyle: ReplyIndicatorStyle? = nil
     ) {
         self.colors = colors
         self.bubbleBorderImages = bubbleBorderImages
@@ -145,6 +128,7 @@ open class BaseMessageCollectionViewCellDefaultStyle: BaseMessageCollectionViewC
         self.incomingAvatarStyle = incomingAvatarStyle
         self.outgoingAvatarStyle = outgoingAvatarStyle
         self.selectionIndicatorStyle = selectionIndicatorStyle
+        self.replyIndicatorStyle = replyIndicatorStyle
 
         self.dateStringAttributes = [
             NSAttributedString.Key.font: self.dateTextStyle.font(),
@@ -162,6 +146,7 @@ open class BaseMessageCollectionViewCellDefaultStyle: BaseMessageCollectionViewC
 
     public lazy var failedIcon: UIImage = self.failedIconImages.normal()
     public lazy var failedIconHighlighted: UIImage = self.failedIconImages.highlighted()
+    public let replyIndicatorStyle: ReplyIndicatorStyle?
 
     private let dateStringAttributes: [NSAttributedString.Key: AnyObject]
 
@@ -218,16 +203,16 @@ public extension BaseMessageCollectionViewCellDefaultStyle { // Default values
 
     static func createDefaultBubbleBorderImages() -> BubbleBorderImages {
         return BubbleBorderImages(
-            borderIncomingTail: UIImage(named: "bubble-incoming-border-tail", in: Bundle(for: Class.self), compatibleWith: nil)!,
-            borderIncomingNoTail: UIImage(named: "bubble-incoming-border", in: Bundle(for: Class.self), compatibleWith: nil)!,
-            borderOutgoingTail: UIImage(named: "bubble-outgoing-border-tail", in: Bundle(for: Class.self), compatibleWith: nil)!,
-            borderOutgoingNoTail: UIImage(named: "bubble-outgoing-border", in: Bundle(for: Class.self), compatibleWith: nil)!
+            borderIncomingTail: UIImage(named: "bubble-incoming-border-tail", in: Bundle.resources, compatibleWith: nil)!,
+            borderIncomingNoTail: UIImage(named: "bubble-incoming-border", in: Bundle.resources, compatibleWith: nil)!,
+            borderOutgoingTail: UIImage(named: "bubble-outgoing-border-tail", in: Bundle.resources, compatibleWith: nil)!,
+            borderOutgoingNoTail: UIImage(named: "bubble-outgoing-border", in: Bundle.resources, compatibleWith: nil)!
         )
     }
 
     static func createDefaultFailedIconImages() -> FailedIconImages {
         let normal = {
-            return UIImage(named: "base-message-failed-icon", in: Bundle(for: Class.self), compatibleWith: nil)!
+            return UIImage(named: "base-message-failed-icon", in: Bundle.resources, compatibleWith: nil)!
         }
         return FailedIconImages(
             normal: normal(),
@@ -246,8 +231,8 @@ public extension BaseMessageCollectionViewCellDefaultStyle { // Default values
                                                             maxContainerWidthPercentageForBubbleView: 0.68)
     }
 
-    private static let selectionIndicatorIconSelected = UIImage(named: "base-message-checked-icon", in: Bundle(for: Class.self), compatibleWith: nil)!.bma_tintWithColor(BaseMessageCollectionViewCellDefaultStyle.defaultOutgoingColor)
-    private static let selectionIndicatorIconDeselected = UIImage(named: "base-message-unchecked-icon", in: Bundle(for: Class.self), compatibleWith: nil)!.bma_tintWithColor(UIColor.bma_color(rgb: 0xC6C6C6))
+    private static let selectionIndicatorIconSelected = UIImage(named: "base-message-checked-icon", in: Bundle.resources, compatibleWith: nil)!.bma_tintWithColor(BaseMessageCollectionViewCellDefaultStyle.defaultOutgoingColor)
+    private static let selectionIndicatorIconDeselected = UIImage(named: "base-message-unchecked-icon", in: Bundle.resources, compatibleWith: nil)!.bma_tintWithColor(UIColor.bma_color(rgb: 0xC6C6C6))
 
     static func createDefaultSelectionIndicatorStyle() -> SelectionIndicatorStyle {
         return SelectionIndicatorStyle(

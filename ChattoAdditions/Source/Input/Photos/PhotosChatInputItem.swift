@@ -36,26 +36,20 @@ open class PhotosChatInputItem: ChatInputItemProtocol {
     public weak var presentingController: UIViewController?
 
     let buttonAppearance: TabInputButtonAppearance
-    let inputViewAppearance: PhotosInputViewAppearance
+
     public init(presentingController: UIViewController?,
-                tabInputButtonAppearance: TabInputButtonAppearance = PhotosChatInputItem.createDefaultButtonAppearance(),
-                inputViewAppearance: PhotosInputViewAppearance = PhotosChatInputItem.createDefaultInputViewAppearance()) {
+                tabInputButtonAppearance: TabInputButtonAppearance = PhotosChatInputItem.createDefaultButtonAppearance()) {
         self.presentingController = presentingController
         self.buttonAppearance = tabInputButtonAppearance
-        self.inputViewAppearance = inputViewAppearance
     }
 
     public static func createDefaultButtonAppearance() -> TabInputButtonAppearance {
         let images: [UIControlStateWrapper: UIImage] = [
-            UIControlStateWrapper(state: .normal): UIImage(named: "camera-icon-unselected", in: Bundle(for: Class.self), compatibleWith: nil)!,
-            UIControlStateWrapper(state: .selected): UIImage(named: "camera-icon-selected", in: Bundle(for: Class.self), compatibleWith: nil)!,
-            UIControlStateWrapper(state: .highlighted): UIImage(named: "camera-icon-selected", in: Bundle(for: Class.self), compatibleWith: nil)!
+            UIControlStateWrapper(state: .normal): UIImage(named: "camera-icon-unselected", in: Bundle.resources, compatibleWith: nil)!,
+            UIControlStateWrapper(state: .selected): UIImage(named: "camera-icon-selected", in: Bundle.resources, compatibleWith: nil)!,
+            UIControlStateWrapper(state: .highlighted): UIImage(named: "camera-icon-selected", in: Bundle.resources, compatibleWith: nil)!
         ]
         return TabInputButtonAppearance(images: images, size: nil)
-    }
-
-    public static func createDefaultInputViewAppearance() -> PhotosInputViewAppearance {
-        return PhotosInputViewAppearance(liveCameraCellAppearence: LiveCameraCellAppearance.createDefaultAppearance())
     }
 
     lazy private var internalTabView: UIButton = {
@@ -63,7 +57,10 @@ open class PhotosChatInputItem: ChatInputItemProtocol {
     }()
 
     lazy var photosInputView: PhotosInputViewProtocol = {
-        let photosInputView = PhotosInputView(presentingController: self.presentingController, appearance: self.inputViewAppearance)
+        let photosInputView = PhotosInputView(
+            cameraPickerFactory: PhotosInputCameraPickerFactory(presentingViewControllerProvider: { [weak self] in self?.presentingController }),
+            liveCameraCellPresenterFactory: LiveCameraCellPresenterFactory()
+        )
         photosInputView.delegate = self
         return photosInputView
     }()

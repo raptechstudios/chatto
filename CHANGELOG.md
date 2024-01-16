@@ -1,3 +1,63 @@
+### 4.1.0 (May 20, 2021)
+
+#### Features
+
+- Dynamic content insets for compond bubble #685 by [@magic146](https://github.com/magic146)
+- Added support for Swift Package Manager #690 by [@NicholasMata](https://github.com/NicholasMata)
+- Add double tap handler #692 by [@AKoulabukhov](https://github.com/AKoulabukhov)
+- Add support of failed loading icon to compound bubble #695 by [@azatZul](https://github.com/azatZul)
+- Added camera type to callback when a photo is taken #696 by [@KaneCheshire](https://github.com/KaneCheshire)
+- Introduce custom live camera cell behaviour #698 by [@magic146](https://github.com/magic146)
+- Custom input camera picker #699 by [@magic146](https://github.com/magic146)
+- Make timestamp revealing optional #704 by [@simoneBumble](https://github.com/simoneBumble)
+- Handle live camera and photo cells taps #705 by [@magic146](https://github.com/magic146)
+
+#### Improvements
+
+- Contribution guide #676 by [@wiruzx](https://github.com/wiruzx)
+- Enabling library evolution support #677 by [@dive](https://github.com/dive)
+- Add github actions #678 by [@wiruzx](https://github.com/wiruzx)
+- Make presenter public to fire send #701 by [@ChaosCoder](https://github.com/ChaosCoder)
+- Replace presentingController with presentingViewControllerProvider #703 by [@magic146](https://github.com/magic146)
+
+#### Bugfixes
+
+- Fix false positive test runs #680 by [@wiruzx](https://github.com/wiruzx)
+- Add empty scroll view delegate methods #684 by [@wiruzx](https://github.com/wiruzx)
+- Fix resource name collision #686 by [@khramtsoff](https://github.com/khramtsoff)
+- Fix the resources bundle signing #697 by [@azatZul](https://github.com/azatZul)
+
+### 4.0.0 (September 20, 2020)
+
+#### Features
+
+- Swipe to reply #672 by [@wiruzx](https://github.com/wiruzx)
+- Ability to highlight message when scrolling to it #670 by [@wiruzx](https://github.com/wiruzx)
+- Add ability to show decoration views on compound bubble #657 by [@wiruzx](https://github.com/wiruzx)
+
+#### Improvements
+
+- Update of compound views #666 by [@wiruzx](https://github.com/wiruzx)
+- BaseMessageInteractionHandlerProtocol methods are extended with a message parameter #665 by [@magic146](https://github.com/magic146)
+- Fix project warnings, migrate to Xcode 11 #662 by [@petrpavlik](https://github.com/petrpavlik)
+- Add safe area insets for decoration views #660 by [@wiruzx](https://github.com/wiruzx)
+- Bump xcode version in travis config #661 by [@wiruzx](https://github.com/wiruzx)
+- Compound bubble styling simplification #653 by [@magic146](https://github.com/magic146)
+- Add removing random item to demo project #652 by [@wiruzx](https://github.com/wiruzx)
+- Fix autolayout support for BaseMessageCollrctionViewCell #651 by [@wiruzx](https://github.com/wiruzx)
+- Determine UI orientation without shared UIApplication object #637 by [@FabioTacke](https://github.com/FabioTacke)
+- Safe area support for BaseChatViewController #632 by [@esilverberg](https://github.com/esilverberg)
+
+#### Bugfixes
+
+- iOS 14: Fix infinite layout loop when chat is empty #674 by [@nalexn](https://github.com/nalexn)
+- Fix image stretching #673 by [@wiruzx](https://github.com/wiruzx)
+- Do not restart camera capture when camera picker is presented #671 by [@leonspok](https://github.com/leonspok)
+- Set frame with disabled animation #659 by [@wiruzx](https://github.com/wiruzx)
+- Fix typo in CGSize extension #655 by [@95krasovsky](https://github.com/95krasovsky)
+- Fix crash, if BaseChatViewController destroyed too early #549 by [@freedbrt](https://github.com/freedbrt)
+- Fix masking in iOS 14 #667 by [@esilverberg](https://github.com/esilverberg)
+
 ### 3.6.0 (April 24, 2020)
 
 #### Features

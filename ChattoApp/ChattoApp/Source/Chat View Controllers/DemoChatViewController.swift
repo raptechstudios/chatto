@@ -39,16 +39,15 @@ class DemoChatViewController: BaseChatViewController {
         }
     }
 
-    lazy private var baseMessageHandler: BaseMessageHandler = {
-        return BaseMessageHandler(messageSender: self.messageSender, messagesSelector: self.messagesSelector)
-    }()
-
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        self.cellPanGestureHandlerConfig.allowReplyRevealing = true
 
         self.title = "Chat"
         self.messagesSelector.delegate = self
         self.chatItemsDecorator = DemoChatItemsDecorator(messagesSelector: self.messagesSelector)
+        self.replyActionHandler = DemoReplyActionHandler(presentingViewController: self)
     }
 
     var chatInputPresenter: AnyObject!
@@ -77,24 +76,43 @@ class DemoChatViewController: BaseChatViewController {
 
         let textMessagePresenter = TextMessagePresenterBuilder(
             viewModelBuilder: self.createTextMessageViewModelBuilder(),
-            interactionHandler: GenericMessageHandler(baseHandler: self.baseMessageHandler)
+            interactionHandler: DemoMessageInteractionHandler(messageSender: self.messageSender, messagesSelector: self.messagesSelector)
         )
         textMessagePresenter.baseMessageStyle = BaseMessageCollectionViewCellAvatarStyle()
 
         let photoMessagePresenter = PhotoMessagePresenterBuilder(
             viewModelBuilder: DemoPhotoMessageViewModelBuilder(),
-            interactionHandler: GenericMessageHandler(baseHandler: self.baseMessageHandler)
+            interactionHandler: DemoMessageInteractionHandler(messageSender: self.messageSender, messagesSelector: self.messagesSelector)
         )
         photoMessagePresenter.baseCellStyle = BaseMessageCollectionViewCellAvatarStyle()
 
         let compoundPresenterBuilder = CompoundMessagePresenterBuilder(
             viewModelBuilder: DemoCompoundMessageViewModelBuilder(),
-            interactionHandler: GenericMessageHandler(baseHandler: self.baseMessageHandler),
+            interactionHandler: DemoMessageInteractionHandler(messageSender: self.messageSender, messagesSelector: self.messagesSelector),
             accessibilityIdentifier: nil,
             contentFactories: [
                 .init(DemoTextMessageContentFactory()),
                 .init(DemoImageMessageContentFactory()),
                 .init(DemoDateMessageContentFactory())
+            ],
+            decorationFactories: [
+                .init(DemoEmojiDecorationViewFactory())
+            ],
+            baseCellStyle: BaseMessageCollectionViewCellAvatarStyle()
+        )
+
+        let compoundPresenterBuilder2 = CompoundMessagePresenterBuilder(
+            viewModelBuilder: DemoCompoundMessageViewModelBuilder(),
+            interactionHandler: DemoMessageInteractionHandler(messageSender: self.messageSender, messagesSelector: self.messagesSelector),
+            accessibilityIdentifier: nil,
+            contentFactories: [
+                .init(DemoTextMessageContentFactory()),
+                .init(DemoImageMessageContentFactory()),
+                .init(DemoInvisibleSplitterFactory()),
+                .init(DemoText2MessageContentFactory())
+            ],
+            decorationFactories: [
+                .init(DemoEmojiDecorationViewFactory())
             ],
             baseCellStyle: BaseMessageCollectionViewCellAvatarStyle()
         )
@@ -104,7 +122,8 @@ class DemoChatViewController: BaseChatViewController {
             DemoPhotoMessageModel.chatItemType: [photoMessagePresenter],
             SendingStatusModel.chatItemType: [SendingStatusPresenterBuilder()],
             TimeSeparatorModel.chatItemType: [TimeSeparatorPresenterBuilder()],
-            ChatItemType.compoundItemType: [compoundPresenterBuilder]
+            ChatItemType.compoundItemType: [compoundPresenterBuilder],
+            ChatItemType.compoundItemType2: [compoundPresenterBuilder2]
         ]
     }
 

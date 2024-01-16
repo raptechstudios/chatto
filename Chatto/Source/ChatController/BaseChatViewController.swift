@@ -33,10 +33,21 @@ public protocol ScrollViewEventsHandling: AnyObject {
     func onScrollViewDidEndDragging(_ scrollView: UIScrollView, _ decelerate: Bool)
 }
 
-open class BaseChatViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate, ChatDataSourceDelegateProtocol, InputPositionControlling {
+public protocol ReplyActionHandler: AnyObject {
+    func handleReply(for: ChatItemProtocol)
+}
+
+open class BaseChatViewController: UIViewController,
+                                   UICollectionViewDataSource,
+                                   UICollectionViewDelegate,
+                                   ChatDataSourceDelegateProtocol,
+                                   InputPositionControlling,
+                                   ReplyIndicatorRevealerDelegate {
 
     open weak var keyboardEventsHandler: KeyboardEventsHandling?
     open weak var scrollViewEventsHandler: ScrollViewEventsHandling?
+    open var replyActionHandler: ReplyActionHandler?
+    open var replyFeedbackGenerator: ReplyFeedbackGeneratorProtocol? = BaseChatViewController.makeReplyFeedbackGenerator()
 
     open var layoutConfiguration: ChatLayoutConfigurationProtocol = ChatLayoutConfiguration.defaultConfiguration {
         didSet {
@@ -106,7 +117,7 @@ open class BaseChatViewController: UIViewController, UICollectionViewDataSource,
         self.collectionView?.dataSource = nil
     }
 
-    open override func loadView() {
+    open override func loadView() { // swiftlint:disable:this prohibited_super_call
         if substitutesMainViewAutomatically {
             self.view = BaseChatViewControllerView() // http://stackoverflow.com/questions/24596031/uiviewcontroller-with-inputaccessoryview-is-not-deallocated
             self.view.backgroundColor = UIColor.white
@@ -145,7 +156,7 @@ open class BaseChatViewController: UIViewController, UICollectionViewDataSource,
 
     open override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        self.keyboardTracker.stopTracking()
+        self.keyboardTracker?.stopTracking()
     }
 
     private func addCollectionView() {
@@ -161,17 +172,36 @@ open class BaseChatViewController: UIViewController, UICollectionViewDataSource,
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         collectionView.autoresizingMask = []
         self.view.addSubview(collectionView)
-        self.view.addConstraint(NSLayoutConstraint(item: self.view, attribute: .top, relatedBy: .equal, toItem: collectionView, attribute: .top, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.view, attribute: .leading, relatedBy: .equal, toItem: collectionView, attribute: .leading, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.view, attribute: .bottom, relatedBy: .equal, toItem: collectionView, attribute: .bottom, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.view, attribute: .trailing, relatedBy: .equal, toItem: collectionView, attribute: .trailing, multiplier: 1, constant: 0))
+        NSLayoutConstraint.activate([
+            self.view.topAnchor.constraint(equalTo: collectionView.topAnchor),
+            self.view.bottomAnchor.constraint(equalTo: collectionView.bottomAnchor)
+        ])
+
+        let leadingAnchor: NSLayoutXAxisAnchor
+        let trailingAnchor: NSLayoutXAxisAnchor
+        if #available(iOS 11.0, *) {
+            let guide = self.view.safeAreaLayoutGuide
+            leadingAnchor = guide.leadingAnchor
+            trailingAnchor = guide.trailingAnchor
+        } else {
+            leadingAnchor = self.view.leadingAnchor
+            trailingAnchor = self.view.trailingAnchor
+        }
+
+        NSLayoutConstraint.activate([
+            collectionView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: trailingAnchor)
+        ])
+
         collectionView.dataSource = self
         collectionView.delegate = self
         collectionView.chatto_setContentInsetAdjustment(enabled: false, in: self)
         collectionView.chatto_setAutomaticallyAdjustsScrollIndicatorInsets(false)
         collectionView.chatto_setIsPrefetchingEnabled(false)
-        
-        self.accessoryViewRevealer = AccessoryViewRevealer(collectionView: collectionView)
+
+        self.cellPanGestureHandler = CellPanGestureHandler(collectionView: collectionView)
+        self.cellPanGestureHandler.replyDelegate = self
+        self.cellPanGestureHandler.config = self.cellPanGestureHandlerConfig
         self.collectionView = collectionView
 
         if !self.customPresentersConfigurationPoint {
@@ -189,20 +219,37 @@ open class BaseChatViewController: UIViewController, UICollectionViewDataSource,
         self.inputBarContainer.translatesAutoresizingMaskIntoConstraints = false
         self.inputBarContainer.backgroundColor = .white
         self.view.addSubview(self.inputBarContainer)
-        self.view.addConstraint(NSLayoutConstraint(item: self.inputBarContainer, attribute: .top, relatedBy: .greaterThanOrEqual, toItem: self.topLayoutGuide, attribute: .bottom, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.view, attribute: .leading, relatedBy: .equal, toItem: self.inputBarContainer, attribute: .leading, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.view, attribute: .trailing, relatedBy: .equal, toItem: self.inputBarContainer, attribute: .trailing, multiplier: 1, constant: 0))
-        self.inputContainerBottomConstraint = NSLayoutConstraint(item: self.view, attribute: .bottom, relatedBy: .equal, toItem: self.inputBarContainer, attribute: .bottom, multiplier: 1, constant: 0)
+        NSLayoutConstraint.activate([
+            self.inputBarContainer.topAnchor.constraint(greaterThanOrEqualTo: self.topLayoutGuide.bottomAnchor)
+        ])
+        let leadingAnchor: NSLayoutXAxisAnchor
+        let trailingAnchor: NSLayoutXAxisAnchor
+        if #available(iOS 11.0, *) {
+            let guide = self.view.safeAreaLayoutGuide
+            leadingAnchor = guide.leadingAnchor
+            trailingAnchor = guide.trailingAnchor
+        } else {
+            leadingAnchor = self.view.leadingAnchor
+            trailingAnchor = self.view.trailingAnchor
+        }
+
+        NSLayoutConstraint.activate([
+            self.inputBarContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            self.inputBarContainer.trailingAnchor.constraint(equalTo: trailingAnchor)
+        ])
+        self.inputContainerBottomConstraint = self.view.bottomAnchor.constraint(equalTo: self.inputBarContainer.bottomAnchor)
         self.view.addConstraint(self.inputContainerBottomConstraint)
     }
 
     private func addInputView() {
         let inputView = self.createChatInputView()
         self.inputBarContainer.addSubview(inputView)
-        self.inputBarContainer.addConstraint(NSLayoutConstraint(item: self.inputBarContainer, attribute: .top, relatedBy: .equal, toItem: inputView, attribute: .top, multiplier: 1, constant: 0))
-        self.inputBarContainer.addConstraint(NSLayoutConstraint(item: self.inputBarContainer, attribute: .leading, relatedBy: .equal, toItem: inputView, attribute: .leading, multiplier: 1, constant: 0))
-        self.inputBarContainer.addConstraint(NSLayoutConstraint(item: self.inputBarContainer, attribute: .bottom, relatedBy: .equal, toItem: inputView, attribute: .bottom, multiplier: 1, constant: 0))
-        self.inputBarContainer.addConstraint(NSLayoutConstraint(item: self.inputBarContainer, attribute: .trailing, relatedBy: .equal, toItem: inputView, attribute: .trailing, multiplier: 1, constant: 0))
+        NSLayoutConstraint.activate([
+            self.inputBarContainer.topAnchor.constraint(equalTo: inputView.topAnchor),
+            self.inputBarContainer.bottomAnchor.constraint(equalTo: inputView.bottomAnchor),
+            self.inputBarContainer.leadingAnchor.constraint(equalTo: inputView.leadingAnchor),
+            self.inputBarContainer.trailingAnchor.constraint(equalTo: inputView.trailingAnchor)
+        ])
     }
 
     private func addInputContentContainer() {
@@ -211,15 +258,20 @@ open class BaseChatViewController: UIViewController, UICollectionViewDataSource,
         self.inputContentContainer.translatesAutoresizingMaskIntoConstraints = false
         self.inputContentContainer.backgroundColor = .white
         self.view.addSubview(self.inputContentContainer)
-        self.view.addConstraint(NSLayoutConstraint(item: self.inputContentContainer, attribute: .top, relatedBy: .equal, toItem: self.inputBarContainer, attribute: .bottom, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.view, attribute: .leading, relatedBy: .equal, toItem: self.inputContentContainer, attribute: .leading, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.view, attribute: .trailing, relatedBy: .equal, toItem: self.inputContentContainer, attribute: .trailing, multiplier: 1, constant: 0))
-        self.view.addConstraint(NSLayoutConstraint(item: self.view, attribute: .bottom, relatedBy: .equal, toItem: self.inputContentContainer, attribute: .bottom, multiplier: 1, constant: 0))
+        NSLayoutConstraint.activate([
+            self.view.bottomAnchor.constraint(equalTo: self.inputContentContainer.bottomAnchor),
+            self.view.leadingAnchor.constraint(equalTo: self.inputContentContainer.leadingAnchor),
+            self.view.trailingAnchor.constraint(equalTo: self.inputContentContainer.trailingAnchor),
+            self.inputContentContainer.topAnchor.constraint(equalTo: self.inputBarContainer.bottomAnchor)
+        ])
     }
 
     private func updateInputContainerBottomBaseOffset() {
         if #available(iOS 11.0, *) {
-            self.inputContainerBottomBaseOffset = self.bottomLayoutGuide.length
+            let offset = self.bottomLayoutGuide.length
+            if self.inputContainerBottomBaseOffset != offset {
+                self.inputContainerBottomBaseOffset = offset
+            }
         } else {
             // If we have been pushed on nav controller and hidesBottomBarWhenPushed = true, then ignore bottomLayoutMargin
             // because it has incorrect value when we actually have a bottom bar (tabbar)
@@ -297,7 +349,7 @@ open class BaseChatViewController: UIViewController, UICollectionViewDataSource,
         return availableHeight >= contentSize.height
     }
 
-    private var previousBoundsUsedForInsetsAdjustment: CGRect? = nil
+    private var previousBoundsUsedForInsetsAdjustment: CGRect?
     func adjustCollectionViewInsets(shouldUpdateContentOffset: Bool) {
         guard let collectionView = self.collectionView else { return }
         let isInteracting = collectionView.panGestureRecognizer.numberOfTouches > 0
@@ -374,7 +426,7 @@ open class BaseChatViewController: UIViewController, UICollectionViewDataSource,
     }
 
     var autoLoadingEnabled: Bool = false
-    var accessoryViewRevealer: AccessoryViewRevealer!
+    var cellPanGestureHandler: CellPanGestureHandler!
     public private(set) var inputBarContainer: UIView!
     public private(set) var inputContentContainer: UIView!
     public internal(set) var presenterFactory: ChatItemPresenterFactoryProtocol!
@@ -423,6 +475,32 @@ open class BaseChatViewController: UIViewController, UICollectionViewDataSource,
     open func referenceIndexPathsToRestoreScrollPositionOnUpdate(itemsBeforeUpdate: ChatItemCompanionCollection, changes: CollectionChanges) -> (beforeUpdate: IndexPath?, afterUpdate: IndexPath?) {
         let firstItemMoved = changes.movedIndexPaths.first
         return (firstItemMoved?.indexPathOld as IndexPath?, firstItemMoved?.indexPathNew as IndexPath?)
+    }
+
+    // MARK: ReplyIndicatorRevealerDelegate
+
+    open func didPassThreshold(at: IndexPath) {
+        self.replyFeedbackGenerator?.generateFeedback()
+    }
+
+    open func didFinishReplyGesture(at indexPath: IndexPath) {
+        let item = self.chatItemCompanionCollection[indexPath.item].chatItem
+        self.replyActionHandler?.handleReply(for: item)
+    }
+
+    open func didCancelReplyGesture(at: IndexPath) {}
+
+    public final var cellPanGestureHandlerConfig: CellPanGestureHandlerConfig = .defaultConfig() {
+        didSet {
+            self.cellPanGestureHandler?.config = self.cellPanGestureHandlerConfig
+        }
+    }
+
+    private static func makeReplyFeedbackGenerator() -> ReplyFeedbackGeneratorProtocol? {
+        if #available(iOS 10, *) {
+            return ReplyFeedbackGenerator()
+        }
+        return nil
     }
 
     // MARK: ChatDataSourceDelegateProtocol

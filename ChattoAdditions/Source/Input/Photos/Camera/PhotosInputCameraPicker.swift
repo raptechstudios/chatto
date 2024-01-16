@@ -24,10 +24,25 @@
 
 import UIKit
 
-final class PhotosInputCameraPicker: ImagePickerDelegate {
+public struct TakenImage {
+    public let image: UIImage
+    public let cameraType: CameraType
+
+    public init(image: UIImage, cameraType: CameraType) {
+        self.image = image
+        self.cameraType = cameraType
+    }
+}
+
+public protocol PhotosInputCameraPickerProtocol {
+    func presentCameraPicker(onImageTaken: @escaping (TakenImage?) -> Void, onCameraPickerDismissed: @escaping () -> Void)
+}
+
+final class PhotosInputCameraPicker: PhotosInputCameraPickerProtocol, ImagePickerDelegate {
+
     private let presentingControllerProvider: () -> UIViewController?
     private var imagePicker: ImagePicker?
-    private var completionBlocks: (onImageTaken: (UIImage?) -> Void, onCameraPickerDismissed: () -> Void)?
+    private var completionBlocks: (onImageTaken: (TakenImage?) -> Void, onCameraPickerDismissed: () -> Void)?
 
     convenience init(presentingController: UIViewController?) {
         self.init(presentingControllerProvider: { [weak presentingController] in presentingController })
@@ -37,7 +52,7 @@ final class PhotosInputCameraPicker: ImagePickerDelegate {
         self.presentingControllerProvider = presentingControllerProvider
     }
 
-    func presentCameraPicker(onImageTaken: @escaping (UIImage?) -> Void, onCameraPickerDismissed: @escaping () -> Void) {
+    func presentCameraPicker(onImageTaken: @escaping (TakenImage?) -> Void, onCameraPickerDismissed: @escaping () -> Void) {
         guard let presentingController = self.presentingControllerProvider(),
             let imagePicker = ImagePickerStore.factory.makeImagePicker(delegate: self) else {
                 onImageTaken(nil)
@@ -51,16 +66,20 @@ final class PhotosInputCameraPicker: ImagePickerDelegate {
 
     func imagePickerDidFinish(_ picker: ImagePicker, mediaInfo: [UIImagePickerController.InfoKey: Any]) {
         let image = mediaInfo[UIImagePickerController.InfoKey.originalImage] as? UIImage
-        self.finishPickingImage(image, fromPicker: picker.controller)
+        self.finishPickingImage(image, fromPicker: picker)
     }
 
     func imagePickerDidCancel(_ picker: ImagePicker) {
-        self.finishPickingImage(nil, fromPicker: picker.controller)
+        self.finishPickingImage(nil, fromPicker: picker)
     }
 
-    private func finishPickingImage(_ image: UIImage?, fromPicker picker: UIViewController) {
-        picker.dismiss(animated: true, completion: self.completionBlocks?.onCameraPickerDismissed)
-        self.completionBlocks?.onImageTaken(image)
+    private func finishPickingImage(_ image: UIImage?, fromPicker picker: ImagePicker) {
+        picker.controller.dismiss(animated: true, completion: self.completionBlocks?.onCameraPickerDismissed)
+        if let image = image {
+            self.completionBlocks?.onImageTaken(TakenImage(image: image, cameraType: picker.cameraType))
+        } else {
+            self.completionBlocks?.onImageTaken(nil)
+        }
         self.completionBlocks = nil
         self.imagePicker = nil
     }

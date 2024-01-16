@@ -25,6 +25,20 @@
 import UIKit
 import Chatto
 
+public struct ReplyIndicatorStyle {
+    let image: UIImage
+    let size: CGSize
+    let maxOffsetToReplyIndicator: CGFloat
+
+    public init(image: UIImage, size: CGSize, maxOffsetToReplyIndicator: CGFloat) {
+        self.image = image
+        self.size = size
+        self.maxOffsetToReplyIndicator = maxOffsetToReplyIndicator
+    }
+
+    var maxOffset: CGFloat { self.maxOffsetToReplyIndicator + size.width }
+}
+
 public protocol BaseMessageCollectionViewCellStyleProtocol {
     func avatarSize(viewModel: MessageViewModelProtocol) -> CGSize // .zero => no avatar
     func avatarVerticalAlignment(viewModel: MessageViewModelProtocol) -> VerticalAlignment
@@ -34,6 +48,7 @@ public protocol BaseMessageCollectionViewCellStyleProtocol {
     func selectionIndicatorIcon(for viewModel: MessageViewModelProtocol) -> UIImage
     func attributedStringForDate(_ date: String) -> NSAttributedString
     func layoutConstants(viewModel: MessageViewModelProtocol) -> BaseMessageCollectionViewCellLayoutConstants
+    var replyIndicatorStyle: ReplyIndicatorStyle? { get }
 }
 
 public struct BaseMessageCollectionViewCellLayoutConstants {
@@ -68,7 +83,7 @@ public struct BaseMessageCollectionViewCellLayoutConstants {
         - Have a BubbleViewType that responds properly to sizeThatFits:
 */
 
-open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, BackgroundSizingQueryable, AccessoryViewRevealable, UIGestureRecognizerDelegate where
+open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, BackgroundSizingQueryable, AccessoryViewRevealable, ReplyIndicatorRevealable, UIGestureRecognizerDelegate where
     BubbleViewType: UIView,
     BubbleViewType: MaximumLayoutWidthSpecificable,
     BubbleViewType: BackgroundSizingQueryable {
@@ -83,9 +98,6 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
             updateClosure()
             self.isUpdating = false
             self.updateViews()
-            if animated {
-                self.layoutIfNeeded()
-            }
         }
         if animated {
             UIView.animate(withDuration: self.animationDuration, animations: updateAndRefreshViews, completion: { (_) -> Void in
@@ -155,8 +167,16 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
 
     public private(set) lazy var tapGestureRecognizer: UITapGestureRecognizer = {
         let tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(BaseMessageCollectionViewCell.bubbleTapped(_:)))
+        tapGestureRecognizer.numberOfTapsRequired = 1
         tapGestureRecognizer.delegate = self
         return tapGestureRecognizer
+    }()
+
+    public private(set) lazy var doubleTapGestureRecognizer: UITapGestureRecognizer = {
+        let doubleTapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(BaseMessageCollectionViewCell.bubbleDoubleTapped(_:)))
+        doubleTapGestureRecognizer.numberOfTapsRequired = 2
+        doubleTapGestureRecognizer.delegate = self
+        return doubleTapGestureRecognizer
     }()
 
     public private (set) lazy var longPressGestureRecognizer: UILongPressGestureRecognizer = {
@@ -178,11 +198,15 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
         self.bubbleView.isExclusiveTouch = true
         self.bubbleView.addGestureRecognizer(self.tapGestureRecognizer)
         self.bubbleView.addGestureRecognizer(self.longPressGestureRecognizer)
+        self.bubbleView.addGestureRecognizer(self.doubleTapGestureRecognizer)
         self.tapGestureRecognizer.require(toFail: self.longPressGestureRecognizer)
+        self.tapGestureRecognizer.require(toFail: self.doubleTapGestureRecognizer)
         self.contentView.addSubview(self.avatarView)
         self.contentView.addSubview(self.bubbleView)
         self.contentView.addSubview(self.failedButton)
         self.contentView.addSubview(self.selectionIndicator)
+        self.contentView.addSubview(self.replyIndicator)
+        self.replyIndicator.alpha = 0
         self.contentView.isExclusiveTouch = true
         self.isExclusiveTouch = true
 
@@ -197,7 +221,7 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
 
     open func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         let allowLongPressGestureRecognizerToBeRecognizedWithAnyOtherGestureRecognizersExceptTapGestures = gestureRecognizer === self.longPressGestureRecognizer && !(otherGestureRecognizer is UITapGestureRecognizer)
-        let allowTapGestureRecognizerToBeRecognizedWithOtherTapGestures = gestureRecognizer === self.tapGestureRecognizer && otherGestureRecognizer is UITapGestureRecognizer
+        let allowTapGestureRecognizerToBeRecognizedWithOtherTapGestures = [self.tapGestureRecognizer, self.doubleTapGestureRecognizer].contains(gestureRecognizer) && otherGestureRecognizer is UITapGestureRecognizer
         return allowLongPressGestureRecognizerToBeRecognizedWithAnyOtherGestureRecognizersExceptTapGestures
             || allowTapGestureRecognizerToBeRecognizedWithOtherTapGestures
     }
@@ -234,6 +258,25 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
         if self.isUpdating { return }
         guard let viewModel = self.messageViewModel, let style = self.baseStyle else { return }
         self.bubbleView.isUserInteractionEnabled = viewModel.isUserInteractionEnabled
+        self.updateFailedIconState()
+        self.accessoryTimestampView.attributedText = style.attributedStringForDate(viewModel.date)
+        self.updateSelectionIndicator(with: style)
+
+        self.contentView.isUserInteractionEnabled = !viewModel.decorationAttributes.isShowingSelectionIndicator
+        self.selectionTapGestureRecognizer?.isEnabled = viewModel.decorationAttributes.isShowingSelectionIndicator
+        self.selectionIndicator.isHidden = !viewModel.decorationAttributes.isShowingSelectionIndicator
+
+        if let replyIndicatorStyle = style.replyIndicatorStyle {
+            replyIndicator.image = replyIndicatorStyle.image
+            replyIndicator.bounds.size = replyIndicatorStyle.size
+        }
+
+        self.setNeedsLayout()
+        self.layoutIfNeeded()
+    }
+
+    public func updateFailedIconState() {
+        let oldAlpha = self.failedButton.alpha
         if self.shouldShowFailedIcon {
             self.failedButton.setImage(self.baseStyle.failedIcon, for: .normal)
             self.failedButton.setImage(self.baseStyle.failedIconHighlighted, for: .highlighted)
@@ -241,14 +284,10 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
         } else {
             self.failedButton.alpha = 0
         }
-        self.accessoryTimestampView.attributedText = style.attributedStringForDate(viewModel.date)
-        self.updateSelectionIndicator(with: style)
-
-        self.contentView.isUserInteractionEnabled = !viewModel.decorationAttributes.isShowingSelectionIndicator
-        self.selectionTapGestureRecognizer?.isEnabled = viewModel.decorationAttributes.isShowingSelectionIndicator
-
-        self.setNeedsLayout()
-        self.layoutIfNeeded()
+        if oldAlpha != self.failedButton.alpha {
+            // to recalculate bubble offsets
+            self.setNeedsLayout()
+        }
     }
 
     private func observeAvatar() {
@@ -316,6 +355,16 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
             self.contentView.frame = contentViewframe
             self.accessoryTimestampView.center = CGPoint(x: self.bounds.width - leftOffsetForAccessoryView + accessoryViewWidth / 2, y: self.contentView.center.y)
         }
+
+        if let style = self.baseStyle?.replyIndicatorStyle, offsetToRevealAccessoryView == 0 {
+            let offset = self.offsetToRevealReplyIndicator
+            let width = style.size.width
+            self.replyIndicator.center = CGPoint(
+                x: min(style.maxOffset - offset, 0) - width / 2,
+                y: self.bounds.height / 2
+            )
+            self.contentView.frame.origin.x = offset
+        }
     }
 
     open override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -360,7 +409,7 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
         }
     }
 
-    public var allowAccessoryViewRevealing: Bool = true
+    public var allowRevealing: Bool = true
 
     open func preferredOffsetToRevealAccessoryView() -> CGFloat? {
         let layoutConstants = baseStyle.layoutConstants(viewModel: messageViewModel)
@@ -395,6 +444,35 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
 
     func removeAccessoryView() {
         self.accessoryTimestampView.removeFromSuperview()
+    }
+
+    // MARK: Reply revealing
+
+    private let replyIndicator = UIImageView()
+
+    private var offsetToRevealReplyIndicator: CGFloat = 0 {
+        didSet { self.setNeedsLayout() }
+    }
+
+    open func canShowReply() -> Bool {
+        self.messageViewModel?.canReply ?? false
+    }
+
+    open func revealReplyIndicator(withOffset offset: CGFloat, animated: Bool) -> Bool {
+        guard let maxOffset = self.baseStyle?.replyIndicatorStyle?.maxOffset else { return false }
+        self.offsetToRevealReplyIndicator = offset
+        let updateAlpha = { [weak self] in
+            self?.replyIndicator.alpha = min(offset, maxOffset) / maxOffset
+        }
+        if animated {
+            UIView.animate(withDuration: self.animationDuration) {
+                self.layoutIfNeeded()
+                updateAlpha()
+            }
+        } else {
+            updateAlpha()
+        }
+        return offset >= maxOffset
     }
 
     // MARK: Selection
@@ -446,6 +524,12 @@ open class BaseMessageCollectionViewCell<BubbleViewType>: UICollectionViewCell, 
     @objc
     func bubbleTapped(_ tapGestureRecognizer: UITapGestureRecognizer) {
         self.onBubbleTapped?(self)
+    }
+
+    public var onBubbleDoubleTapped: ((_ cell: BaseMessageCollectionViewCell) -> Void)?
+    @objc
+    func bubbleDoubleTapped(_ tapGestureRecognizer: UITapGestureRecognizer) {
+        self.onBubbleDoubleTapped?(self)
     }
 
     public var onBubbleLongPressBegan: ((_ cell: BaseMessageCollectionViewCell) -> Void)?

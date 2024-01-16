@@ -30,7 +30,8 @@ open class CompoundMessagePresenter<ViewModelBuilderT, InteractionHandlerT>
     ViewModelBuilderT: ViewModelBuilderProtocol,
     ViewModelBuilderT.ModelT: Equatable & ContentEquatableChatItemProtocol,
     InteractionHandlerT: BaseMessageInteractionHandlerProtocol,
-    InteractionHandlerT.ViewModelT == ViewModelBuilderT.ViewModelT {
+    InteractionHandlerT.MessageType == ViewModelBuilderT.ModelT,
+    InteractionHandlerT.ViewModelType == ViewModelBuilderT.ViewModelT {
 
     public typealias ModelT = ViewModelBuilderT.ModelT
     public typealias ViewModelT = ViewModelBuilderT.ViewModelT
@@ -44,6 +45,8 @@ open class CompoundMessagePresenter<ViewModelBuilderT, InteractionHandlerT>
     private let initialContentFactories: [AnyMessageContentFactory<ModelT>]
     private var contentFactories: [AnyMessageContentFactory<ModelT>]!
     private var contentPresenters: [MessageContentPresenterProtocol]!
+    private let initialDecorationFactories: [AnyMessageDecorationViewFactory<ModelT>]
+    private var decorationFactories: [AnyMessageDecorationViewFactory<ModelT>] = []
     private var menuPresenter: ChatItemMenuPresenterProtocol?
 
     public init(
@@ -56,6 +59,7 @@ open class CompoundMessagePresenter<ViewModelBuilderT, InteractionHandlerT>
         compoundCellStyle: CompoundBubbleViewStyleProtocol,
         cache: Cache<CompoundBubbleLayoutProvider.Configuration, CompoundBubbleLayoutProvider>,
         accessibilityIdentifier: String?,
+        decorationFactories: [AnyMessageDecorationViewFactory<ModelT>] = [],
         cellClass: CompoundMessageCollectionViewCell.Type = CompoundMessageCollectionViewCell.self
     ) {
         self.compoundCellStyle = compoundCellStyle
@@ -63,6 +67,7 @@ open class CompoundMessagePresenter<ViewModelBuilderT, InteractionHandlerT>
         self.cache = cache
         self.accessibilityIdentifier = accessibilityIdentifier
         self.cellClass = cellClass
+        self.initialDecorationFactories = decorationFactories
         super.init(
             messageModel: messageModel,
             viewModelBuilder: viewModelBuilder,
@@ -110,15 +115,20 @@ open class CompoundMessagePresenter<ViewModelBuilderT, InteractionHandlerT>
     }
 
     open func updateContent() {
-        self.contentFactories = self.initialContentFactories.filter { $0.canCreateMessageContent(forModel: self.messageModel) }
+        let previousIds = self.contentFactories?.map { $0.identifier }
+        let contentFactories = self.initialContentFactories.filter { $0.canCreateMessageContent(forModel: self.messageModel) }
+        let currentIds = contentFactories.map { $0.identifier }
+        self.contentFactories = contentFactories
 
-        self.contentPresenters = self.contentFactories.compactMap {
-            var presenter = $0.createContentPresenter(forModel: self.messageModel)
-            presenter.delegate = self
-            return presenter
-        }
+        self.contentPresenters = self.contentFactories.compactMap(self.createContentPresenter)
 
         self.menuPresenter = self.contentFactories.lazy.compactMap { $0.createMenuPresenter(forModel: self.messageModel) }.first
+
+        self.decorationFactories = self.initialDecorationFactories.filter { $0.canCreateDecorationView(for: self.messageModel) }
+
+        if let previousIds = previousIds, previousIds != currentIds, let bubbleView = self.cell?.bubbleView {
+            self.updateContentViews(in: bubbleView)
+        }
     }
 
     open func updateExistingContentPresenters(with newMessage: Any) {
@@ -151,20 +161,18 @@ open class CompoundMessagePresenter<ViewModelBuilderT, InteractionHandlerT>
 
         super.configureCell(compoundCell, decorationAttributes: decorationAttributes, animated: animated) { [weak self] in
             defer { additionalConfiguration?() }
-            guard let sSelf = self else { return }
+            guard let self = self else { return }
 
             let bubbleView = compoundCell.bubbleView!
 
             if bubbleView.decoratedContentViews == nil {
-                bubbleView.accessibilityIdentifier = sSelf.accessibilityIdentifier
-                bubbleView.decoratedContentViews = zip(sSelf.contentFactories, sSelf.contentPresenters).map { factory, presenter in
-                    return CompoundBubbleView.DecoratedView(view: factory.createContentView(), showBorder: presenter.showBorder)
-                }
+                bubbleView.accessibilityIdentifier = self.accessibilityIdentifier
+                self.updateContentViews(in: bubbleView)
             }
 
-            bubbleView.viewModel = sSelf.messageViewModel
-            bubbleView.layoutProvider = sSelf.layoutProvider
-            bubbleView.style = sSelf.compoundCellStyle
+            bubbleView.viewModel = self.messageViewModel
+            bubbleView.layoutProvider = self.layoutProvider
+            bubbleView.style = self.compoundCellStyle
 
             /*
              There is a current algorithm of binding (and unbinding, as well) compoundCell's views to their presenters:
@@ -173,11 +181,17 @@ open class CompoundMessagePresenter<ViewModelBuilderT, InteractionHandlerT>
              3. CompoundCell's views bound with a current compound message presenters.
              */
 
-            sSelf.contentPresenters.forEach { $0.unbindFromView() }
-            compoundCell.viewReferences = zip(sSelf.contentPresenters, bubbleView.decoratedContentViews!.map({ $0.view })).map { presenter, view in
+            self.contentPresenters.forEach { $0.unbindFromView() }
+            compoundCell.viewReferences = zip(self.contentPresenters, bubbleView.decoratedContentViews!.map({ $0.view })).map { presenter, view in
                 let viewReference = ViewReference(to: view)
                 presenter.bindToView(with: viewReference)
                 return viewReference
+            }
+
+            compoundCell.decorationViews = self.decorationFactories.map { factory in
+                let view = factory.makeDecorationView(for: self.messageModel)
+                let layoutProvider = factory.makeLayoutProvider(for: self.messageModel)
+                return (view, layoutProvider)
             }
         }
     }
@@ -206,10 +220,12 @@ open class CompoundMessagePresenter<ViewModelBuilderT, InteractionHandlerT>
     private var layoutProvider: CompoundBubbleLayoutProvider {
         let configuration: CompoundBubbleLayoutProvider.Configuration = {
             let contentLayoutProviders = self.contentFactories.map { $0.createLayoutProvider(forModel: self.messageModel) }
+            let decorationLayoutProviders = self.decorationFactories.map { $0.makeLayoutProvider(for: self.messageModel) }
             let viewModel = self.messageViewModel
             let tailWidth = self.compoundCellStyle.tailWidth(forViewModel: viewModel)
             return CompoundBubbleLayoutProvider.Configuration(
                 layoutProviders: contentLayoutProviders,
+                decorationLayoutProviders: decorationLayoutProviders,
                 tailWidth: tailWidth,
                 isIncoming: viewModel.isIncoming
             )
@@ -244,14 +260,84 @@ open class CompoundMessagePresenter<ViewModelBuilderT, InteractionHandlerT>
         self.menuPresenter?.performMenuControllerAction(action)
     }
 
+    open override func onCellFailedButtonTapped(_ failedButtonView: UIView) {
+        if self.messageModel.status == .failed {
+            super.onCellFailedButtonTapped(failedButtonView)
+        } else {
+            for presenter in self.contentPresenters {
+                guard let failablePresenter = presenter as? FailableMessageContentPresenterProtocol,
+                      failablePresenter.contentTransferStatus?.value == .failed else {
+                    continue
+                }
+                failablePresenter.handleFailedIconTap()
+            }
+        }
+    }
+
+    // MARK: - ChatItemSpotlighting
+
+    override open func spotlight() {
+        self.cell?.bubbleView?.spotlight()
+    }
+
     // MARK: - MessageContentPresenterDelegate
 
     public func presenterDidInvalidateLayout(_ presenter: MessageContentPresenterProtocol) {
         self.cleanLayoutCache(for: self.lastUsedConfiguration)
     }
 
+    // MARK: - Private
+
     private func cleanLayoutCache(for configuration: CompoundBubbleLayoutProvider.Configuration?) {
         guard let configuration = configuration else { return }
         self.cache[configuration] = nil
+    }
+
+    private func updateContentViews(in bubbleView: CompoundBubbleView) {
+        let action = { [weak self] in
+            guard let self = self else { return }
+            bubbleView.decoratedContentViews = zip(self.contentFactories, self.contentPresenters).map { factory, presenter in
+                CompoundBubbleView.DecoratedView(view: factory.createContentView(), showBorder: presenter.showBorder)
+            }
+        }
+        if Thread.isMainThread {
+            action()
+        } else {
+            DispatchQueue.main.async {
+                action()
+            }
+        }
+    }
+
+    private func createContentPresenter(using factory: AnyMessageContentFactory<ModelT>) -> MessageContentPresenterProtocol {
+        var presenter = factory.createContentPresenter(forModel: self.messageModel)
+        presenter.delegate = self
+        if let failablePresenter = presenter as? FailableMessageContentPresenterProtocol {
+            failablePresenter.contentTransferStatus?.observe(self, closure: { [weak self] (_, _) in
+                self?.handleContentTransferStatusUpdate()
+            })
+        }
+        return presenter
+    }
+
+    private func handleContentTransferStatusUpdate() {
+        let aggregatedContentStatus = self.contentPresenters.compactMap { $0 as? FailableMessageContentPresenterProtocol }
+            .reduce(TransferStatus.success, { (result, presenter) in
+            guard let status = presenter.contentTransferStatus?.value else { return result }
+            switch status {
+            case .failed:
+                return .failed
+            case .transfering:
+                return result == .success ? status : result
+            case .idle, .success:
+                return result
+            }
+        })
+
+        let currentContentStatus = self.messageViewModel.messageContentTransferStatus
+        guard currentContentStatus != aggregatedContentStatus else { return }
+
+        self.messageViewModel.messageContentTransferStatus = aggregatedContentStatus
+        self.cell?.updateFailedIconState()
     }
 }

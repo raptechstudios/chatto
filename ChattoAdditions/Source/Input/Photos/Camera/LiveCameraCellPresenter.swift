@@ -23,7 +23,7 @@
 */
 
 import UIKit
-import Photos
+import AVFoundation
 
 public struct LiveCameraSettings {
     public let cameraPosition: AVCaptureDevice.Position
@@ -31,22 +31,33 @@ public struct LiveCameraSettings {
     public init(cameraPosition: AVCaptureDevice.Position) {
         self.cameraPosition = cameraPosition
     }
-
-    public static func makeDefaultSettings() -> LiveCameraSettings {
-        return LiveCameraSettings(cameraPosition: .unspecified)
-    }
 }
 
-public final class LiveCameraCellPresenter {
+public protocol LiveCameraCellPresenterProtocol {
+
+    func registerCells(collectionView: UICollectionView)
+    func dequeueCell(collectionView: UICollectionView, indexPath: IndexPath) -> UICollectionViewCell
+
+    func cellWillBeShown(_ cell: UICollectionViewCell)
+    func cellWasHidden(_ cell: UICollectionViewCell)
+
+    func cameraPickerWillAppear()
+    func cameraPickerDidDisappear()
+}
+
+public typealias AVAuthorizationStatusProvider = () -> AVAuthorizationStatus
+
+public final class LiveCameraCellPresenter: LiveCameraCellPresenterProtocol {
     private typealias Class = LiveCameraCellPresenter
-    public typealias AVAuthorizationStatusProvider = () -> AVAuthorizationStatus
 
     private let cameraSettings: LiveCameraSettings
     private let cellAppearance: LiveCameraCellAppearance
     private let authorizationStatusProvider: () -> AVAuthorizationStatus
-    public init(cameraSettings: LiveCameraSettings = LiveCameraSettings.makeDefaultSettings(),
-                cellAppearance: LiveCameraCellAppearance = LiveCameraCellAppearance.createDefaultAppearance(),
-                authorizationStatusProvider: @escaping AVAuthorizationStatusProvider = LiveCameraCellPresenter.createDefaultCameraAuthorizationStatusProvider()) {
+    private var isCellAddedToWindow: Bool = false
+
+    public init(cameraSettings: LiveCameraSettings,
+                cellAppearance: LiveCameraCellAppearance,
+                authorizationStatusProvider: @escaping AVAuthorizationStatusProvider) {
         self.cameraSettings = cameraSettings
         self.cellAppearance = cellAppearance
         self.authorizationStatusProvider = authorizationStatusProvider
@@ -57,13 +68,8 @@ public final class LiveCameraCellPresenter {
     }
 
     private static let reuseIdentifier = "LiveCameraCell"
-    public static func createDefaultCameraAuthorizationStatusProvider() -> AVAuthorizationStatusProvider {
-        return {
-            return AVCaptureDevice.authorizationStatus(for: .video)
-        }
-    }
 
-    public static func registerCells(collectionView: UICollectionView) {
+    public func registerCells(collectionView: UICollectionView) {
         collectionView.register(LiveCameraCell.self, forCellWithReuseIdentifier: Class.reuseIdentifier)
     }
 
@@ -91,6 +97,7 @@ public final class LiveCameraCellPresenter {
 
         if self.cell === cell {
             cell.captureLayer = nil
+            self.isCellAddedToWindow = false
             self.cell = nil
             self.stopCapturing()
         }
@@ -100,6 +107,8 @@ public final class LiveCameraCellPresenter {
         guard let cameraCell = self.cell else { return }
 
         self.cameraAuthorizationStatus = self.authorizationStatusProvider()
+        self.isCellAddedToWindow = cameraCell.window != nil
+
         cameraCell.updateWithAuthorizationStatus(self.cameraAuthorizationStatus)
         cameraCell.appearance = self.cellAppearance
 
@@ -111,6 +120,7 @@ public final class LiveCameraCellPresenter {
 
         cameraCell.onWasAddedToWindow = { [weak self] (cell) in
             guard let sSelf = self, sSelf.cell === cell else { return }
+            sSelf.isCellAddedToWindow = true
             if !sSelf.cameraPickerIsVisible {
                 sSelf.startCapturing()
             }
@@ -118,6 +128,7 @@ public final class LiveCameraCellPresenter {
 
         cameraCell.onWasRemovedFromWindow = { [weak self] (cell) in
             guard let sSelf = self, sSelf.cell === cell else { return }
+            sSelf.isCellAddedToWindow = false
             if !sSelf.cameraPickerIsVisible {
                 sSelf.stopCapturing()
             }
@@ -155,14 +166,16 @@ public final class LiveCameraCellPresenter {
     }
 
     var cameraPickerIsVisible = false
-    func cameraPickerWillAppear() {
+    public func cameraPickerWillAppear() {
         self.cameraPickerIsVisible = true
         self.stopCapturing()
     }
 
-    func cameraPickerDidDisappear() {
+    public func cameraPickerDidDisappear() {
         self.cameraPickerIsVisible = false
-        self.startCapturing()
+        if self.isCellAddedToWindow {
+            self.startCapturing()
+        }
     }
 
     func startCapturing() {
